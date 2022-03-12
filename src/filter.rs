@@ -14,7 +14,7 @@ const DEFAULT_DT_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 pub fn filter_file(path: &str, args: &Args) -> Result<(), std::io::Error> {
     let contents = fs::read_to_string(path)?;
     for line in contents.lines() {
-        println!("{}", filter_line(line, args))
+        println!("{}", replace(line, args))
     }
 
     Ok(())
@@ -30,7 +30,7 @@ pub fn filter_stdin(args: &Args) {
         match handle.read_line(&mut line) {
             Ok(0) => eof = true,
             Ok(_) => {
-                print!("{}", filter_line(&line, args));
+                print!("{}", replace(&line, args));
                 line.clear();
             }
             Err(_) => panic!("Could not read line"),
@@ -38,36 +38,35 @@ pub fn filter_stdin(args: &Args) {
     }
 }
 
-fn filter_line<'a>(line: &'a str, args: &'a Args) -> Cow<'a, str> {
-    replace(line, args.utc, args.no_highlight)
-}
-
-fn parse_and_format<T: TimeZone>(ts: &str, tz: T) -> String
+fn parse_and_format<T>(ts: &str, tz: T, args: &Args) -> String
 where
+    T: TimeZone,
     T::Offset: Display,
 {
-    tz.datetime_from_str(ts, "%s")
-        .unwrap()
-        .format(DEFAULT_DT_FORMAT)
-        .to_string()
-}
-
-fn ts_to_date(ts: &str, utc: bool) -> String {
-    if utc {
-        parse_and_format(ts, Utc)
+    let dt = tz.datetime_from_str(ts, "%s").unwrap();
+    if args.rfc3339 {
+        dt.to_rfc3339_opts(SecondsFormat::Secs, true)
     } else {
-        parse_and_format(ts, Local)
+        dt.format(DEFAULT_DT_FORMAT).to_string()
     }
 }
 
-fn replace(input: &str, utc: bool, no_highlight: bool) -> Cow<str> {
+fn ts_to_date(ts: &str, args: &Args) -> String {
+    if args.utc {
+        parse_and_format(ts, Utc, args)
+    } else {
+        parse_and_format(ts, Local, args)
+    }
+}
+
+fn replace<'a>(input: &'a str, args: &'a Args) -> Cow<'a, str> {
     lazy_static! {
         static ref TS_RE: Regex = Regex::new(r"\b(?P<ts>1\d{9})(\d\d\d)?\b").unwrap();
     }
 
     TS_RE.replace_all(input, |caps: &Captures| {
-        let output = ts_to_date(caps.name("ts").unwrap().as_str(), utc);
-        if no_highlight {
+        let output = ts_to_date(caps.name("ts").unwrap().as_str(), args);
+        if args.no_highlight {
             return output;
         }
 
@@ -81,15 +80,45 @@ mod tests {
 
     #[test]
     fn test_replace() {
-        let actual = replace("foo 1646764906847 bar", false, false);
-        let expected = format!("{} {} {}", "foo", "2022-03-08 19:41:46".red(), "bar");
+        let mut args = Args::default();
+        args.no_highlight = true;
+
+        let actual = replace("foo 1646764906847 bar", &args);
+        let expected = format!("{} {} {}", "foo", "2022-03-08 19:41:46", "bar");
         assert_eq!(actual, expected);
 
-        let actual = replace("foo 1646764906 bar", false, false);
+        let actual = replace("foo 1646764906 bar", &args);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_replace_utc() {
+        let mut args = Args::default();
+        args.no_highlight = true;
+        args.utc = true;
+
+        let actual = replace("foo 1646764906847 bar", &args);
+        let expected = format!("{} {} {}", "foo", "2022-03-08 18:41:46", "bar");
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_replace_rfc3339() {
+        let mut args = Args::default();
+        args.no_highlight = true;
+        args.rfc3339 = true;
+
+        let actual = replace("foo 1646764906847 bar", &args);
+        let expected = format!("{} {} {}", "foo", "2022-03-08T19:41:46+01:00", "bar");
         assert_eq!(actual, expected);
 
-        let actual = replace("foo 1646764906847 bar", true, false);
-        let expected = format!("{} {} {}", "foo", "2022-03-08 18:41:46".red(), "bar");
+        let mut args = args.clone();
+        args.no_highlight = true;
+        args.utc = true;
+        args.rfc3339 = true;
+
+        let actual = replace("foo 1646764906847 bar", &args);
+        let expected = format!("{} {} {}", "foo", "2022-03-08T18:41:46Z", "bar");
         assert_eq!(actual, expected);
     }
 }

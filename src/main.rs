@@ -3,7 +3,7 @@ use std::process;
 
 mod filter;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default, Clone)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
     /// Will read from STDIN if omitted
@@ -13,9 +13,13 @@ pub struct Args {
     #[clap(long)]
     no_highlight: bool,
 
-    /// Format dates in UTC instead of the system's local time
+    /// Display dates in UTC instead of the system's local time
     #[clap(long)]
     utc: bool,
+
+    /// Display RFC 3339 dates
+    #[clap(long)]
+    rfc3339: bool,
 }
 
 fn main() {
