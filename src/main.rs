@@ -4,7 +4,7 @@ use std::process;
 mod filter;
 
 #[derive(Parser, Debug, Default, Clone)]
-#[clap(author, version, about, long_about = None)]
+#[clap(name = "ts", author, version, about, long_about = None)]
 pub struct Args {
     /// Will read from STDIN if omitted
     file: Option<String>,
